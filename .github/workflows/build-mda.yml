@@ -12,7 +12,8 @@ jobs:
   mda:
     runs-on: ubuntu-latest
     env:
-      MENDIX_VERSION: "10.24.1.74050"   # ← CHANGE THIS! See note below
+      # ← Use the EXACT version shown in Studio Pro > Help > About
+      MENDIX_VERSION: "10.24.1.74050"
       MDA_OUTPUT: deployment/app.mda
 
     steps:
@@ -32,22 +33,22 @@ jobs:
         shell: bash
         run: |
           url="https://cdn.mendix.com/runtime/mxbuild-${{ env.MENDIX_VERSION }}.tar.gz"
-          echo "Downloading from: $url"
+          echo "Downloading MxBuild from: $url"
           
-          curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "Download failed! Check version number."; exit 1; }
+          curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "❌ Download failed! Check version number."; exit 1; }
           
           mkdir -p mx_tools
           tar -xzf mendix_runtime.tar.gz -C mx_tools
           
           mxbin=$(find mx_tools -name mxbuild -type f | head -n 1)
           if [ -z "$mxbin" ]; then
-            echo "mxbuild binary not found!"
+            echo "❌ mxbuild binary not found!"
             exit 1
           fi
           
           chmod +x "$mxbin"
           echo "MXBUILD_BIN=$mxbin" >> $GITHUB_OUTPUT
-          echo "Found MxBuild at: $mxbin"
+          echo "✅ Found MxBuild at: $mxbin"
 
       - name: 4. Locate Project File
         id: find_mpr
@@ -55,11 +56,11 @@ jobs:
         run: |
           mpr=$(find . -name "*.mpr" -type f | head -n 1)
           if [ -z "$mpr" ]; then
-            echo "No .mpr file found!"
+            echo "❌ No .mpr file found!"
             exit 1
           fi
           echo "mpr=$mpr" >> $GITHUB_OUTPUT
-          echo "Found project: $mpr"
+          echo "✅ Found project: $mpr"
 
       - name: 5. Build MDA
         shell: bash
@@ -70,8 +71,12 @@ jobs:
           
           mkdir -p "$(dirname "$out")"
           
+          echo "🔧 Using JAVA_HOME : $JAVA_HOME"
+          echo "🔧 Java executable: $JAVA_HOME/bin/java"
+          
           "$mx" --target=package \
                 --java-home="$JAVA_HOME" \
+                --java-exe-path="$JAVA_HOME/bin/java" \
                 --output="$out" \
                 "$mpr"
 
@@ -82,9 +87,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           git add "${{ env.MDA_OUTPUT }}"
+          
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "✅ No changes to commit"
           else
-            git commit -m "CI: Auto-build MDA"
+            git commit -m "CI: Auto-build MDA (v${{ env.MENDIX_VERSION }})"
             git push
+            echo "✅ MDA committed and pushed successfully!"
           fi
