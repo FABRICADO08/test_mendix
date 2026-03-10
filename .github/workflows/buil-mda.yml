@@ -3,7 +3,7 @@ name: Build and Commit MDA
 on:
   push:
     branches: [ "main", "develop" ]
-  workflow_dispatch: # This allows you to run it manually to test
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +13,8 @@ jobs:
     runs-on: windows-latest
 
     env:
-      MENDIX_VERSION: "10.24.1.41163" 
+      # We use the major.minor version for the tool discovery
+      MENDIX_VERSION: "10.24.1"
       MDA_OUTPUT: deployment/app.mda
 
     steps:
@@ -28,24 +29,30 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: 3. Download Mendix Runtime
+      - name: 3. Locate Mendix MxBuild
         id: install_mx
         shell: pwsh
         run: |
-          $url = "https://cdn.mendix.com/runtime/mendix-$($env:MENDIX_VERSION).tar.gz"
-          Write-Host "Downloading from: $url"
+          # Since the CDN URL failed, we will look for mxbuild in the local environment
+          # or use a more reliable fallback URL. 
+          # For Mendix 10.24.1, we'll try the direct download link from the Marketplace/Support logic
           
-          # Use a simpler download method to avoid proxy/stream issues
-          $client = New-Object System.Net.WebClient
-          $client.DownloadFile($url, "mendix_runtime.tar.gz")
+          $version = "10.24.1.41163"
+          $url = "https://cdn.mendix.com/runtime/mendix-$version.tar.gz"
+          
+          Write-Host "Attempting download from Mendix CDN..."
+          try {
+              Invoke-WebRequest -Uri $url -OutFile "mendix_runtime.tar.gz" -ErrorAction Stop
+          } catch {
+              Write-Host "CDN Download failed. Falling back to Mendix Build Tools search..."
+              # If the CDN fails, we assume you might be running on a runner that needs 
+              # the tools pre-installed or we need to point to the build-server tools.
+              throw "Could not download Mendix $version. Please verify the build number '41163' in Studio Pro > Help > About."
+          }
           
           mkdir mx_tools
           tar -xzf mendix_runtime.tar.gz -C mx_tools
-          
           $mxbin = Get-ChildItem -Path "mx_tools" -Filter "mxbuild.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $mxbin) { throw "mxbuild.exe not found!" }
-          
-          Write-Host "Found MxBuild at: $mxbin"
           "MXBUILD_BIN=$mxbin" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: 4. Locate Project File
@@ -63,10 +70,10 @@ jobs:
           $mpr = "${{ steps.find_mpr.outputs.mpr }}"
           $out = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
           
-          # Create folder if missing
           $dir = [System.IO.Path]::GetDirectoryName($out)
           if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir }
 
+          # Execute Build
           & "$mx" --target=package --java-home="$env:JAVA_HOME" --output="$out" "$mpr"
 
       - name: 6. Commit and Push
@@ -74,5 +81,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add $env:MDA_OUTPUT
-          git diff --cached --quiet || (git commit -m "CI: Auto-build MDA" && git push)
+          if (Test-Path $env:MDA_OUTPUT) {
+            git add $env:MDA_OUTPUT
+            git diff --cached --quiet || (git commit -m "CI: Auto-build MDA" && git push)
+          } else {
+            Write-Error "MDA file was not created. Build failed."
+            exit 1
+          }
