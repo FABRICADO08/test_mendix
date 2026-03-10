@@ -12,7 +12,7 @@ jobs:
   mda:
     runs-on: ubuntu-latest
     env:
-      # ← Use the EXACT version shown in Studio Pro > Help > About
+      # ← Exact version from Studio Pro > Help > About
       MENDIX_VERSION: "10.24.1.74050"
       MDA_OUTPUT: deployment/app.mda
 
@@ -35,7 +35,7 @@ jobs:
           url="https://cdn.mendix.com/runtime/mxbuild-${{ env.MENDIX_VERSION }}.tar.gz"
           echo "Downloading MxBuild from: $url"
           
-          curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "❌ Download failed! Check version number."; exit 1; }
+          curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "❌ Download failed!"; exit 1; }
           
           mkdir -p mx_tools
           tar -xzf mendix_runtime.tar.gz -C mx_tools
@@ -86,7 +86,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add "${{ env.MDA_OUTPUT }}"
+          # Force-add because deployment/ is in .gitignore (standard Mendix behavior)
+          git add -f "${{ env.MDA_OUTPUT }}"
           
           if git diff --cached --quiet; then
             echo "✅ No changes to commit"
