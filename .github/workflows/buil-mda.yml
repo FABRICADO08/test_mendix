@@ -1,81 +1,42 @@
-name: Build and Commit MDA
+name: Build MDA Automatically
 
 on:
   push:
     branches: [ "main", "develop" ]
 
 permissions:
-  contents: write  # required for committing back
+  contents: write
 
 jobs:
-  mda:
-    # Use a Windows runner because MxBuild (from Studio Pro) is Windows-based.
-    runs-on: windows-latest
-
-    env:
-      # Where to write the MDA (adjust if you prefer a different folder/name)
-      MDA_OUTPUT: deployment/app.mda
+  build-mda:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0    # needed so we can push back using GITHUB_TOKEN
+          fetch-depth: 0
 
-      - name: Set up Java 17 (required for Mendix 10.x builds)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Locate the .mpr (Mendix project file)
-        id: find_mpr
-        shell: pwsh
+      - name: Build MDA using Mendix Docker Buildpack
         run: |
-          $mpr = Get-ChildItem -Path . -Recurse -Filter *.mpr | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $mpr) { throw "No .mpr file found in repo." }
-          "mpr=$mpr" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          docker pull mendix/docker-mendix-buildpack:latest
+          docker run --rm \
+            -v $PWD:/project \
+            mendix/docker-mendix-buildpack:latest \
+            /opt/mendix/buildpack/compilation /project /tmp/buildcache /tmp/deps 0
 
-      - name: Ensure output folder exists
-        shell: pwsh
+          # Copy out the generated .mda (Mendix build output)
+          mkdir -p deployment
+          cp -r /project/build/mendix/app.mda deployment/app.mda || true
+
+      - name: Commit updated MDA
         run: |
-          $outPath = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
-          New-Item -ItemType Directory -Force -Path ([System.IO.Path]::GetDirectoryName($outPath)) | Out-Null
-
-      # IMPORTANT:
-      # Provide the full path to mxbuild.exe via repository/organization secret MXBUILD_PATH.
-      # Example (on your self-hosted/desktop where Studio Pro 10.24.1 is installed):
-      # C:\Program Files\Mendix\10.24.1.XXXX\modeler\mxbuild.exe
-      - name: Build MDA with MxBuild
-        shell: pwsh
-        env:
-          MXBUILD_PATH: ${{ secrets.MXBUILD_PATH }}
-        run: |
-          if (-not (Test-Path $env:MXBUILD_PATH)) {
-            throw "MXBUILD_PATH does not point to a valid mxbuild.exe. Set it as a repository secret."
-          }
-          $mpr = "${{ steps.find_mpr.outputs.mpr }}"
-          $out = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
-
-          # MxBuild packages the app into an .mda (deployment archive)
-          # Common switches:
-          #   --target=package (create deployment package)
-          #   --output=<file>  (where to write the .mda)
-          & "$env:MXBUILD_PATH" `
-            --target=package `
-            --output="$out" `
-            "$mpr"
-
-      - name: Commit & push updated MDA
-        shell: pwsh
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add $env:MDA_OUTPUT
-          if (-not (git diff --cached --quiet)) {
-            git commit -m "CI: update MDA"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add deployment/app.mda
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto-update MDA"
             git push
-          } else {
-            Write-Host "No MDA changes to commit."
-          }
+          else
+            echo "No changes to commit."
+          fi
