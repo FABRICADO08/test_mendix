@@ -1,14 +1,16 @@
-# Use the official Mendix rootfs base image (compatible with Mendix 10.x)
-FROM mendix/rootfs:ubi8
+FROM mendix/rootfs:ubi8 AS builder
 
-# Set work directory
+WORKDIR /build
+COPY . /build
+
+# Build the app (MxBuild runs here)
+RUN /opt/mendix/build.sh /build
+
+FROM mendix/rootfs:ubi8
 WORKDIR /opt/mendix
 
-# Copy the MDA package into the image
-COPY deployment/*.mda /opt/mendix/app.mda
+# Copy the generated MDA output
+COPY --from=builder /build/build/mendix/app.mda /opt/mendix/app.mda
 
-# Expose default Mendix port
 EXPOSE 8080
-
-# Start the app using the Mendix runtime starter
 CMD ["/opt/mendix/run.sh"]
