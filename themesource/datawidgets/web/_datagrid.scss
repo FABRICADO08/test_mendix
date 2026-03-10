@@ -1,36 +1,13 @@
-$background-color: #fff !default;
-$icon-color: #606671 !default;
-$icon-size: 14px !default;
-$pagination-button-color: #3b4251 !default;
-$pagination-caption-color: #0a1325 !default;
-$dragging-color-effect: rgba(10, 19, 37, 0.8) !default;
-$dragging-effect-size: 4px;
+@import "export-alert";
+@import "export-progress";
+@import "pseudo-modal";
 
-$grid-bg-striped: #fafafb !default;
-$grid-bg-hover: #f5f6f6 !default;
-$spacing-small: 8px !default;
-$spacing-medium: 16px !default;
-$spacing-large: 24px !default;
-$grid-border-color: #ced0d3 !default;
-
-$brand-primary: #264ae5 !default;
-$brand-light: #e6eaff !default;
-$grid-selected-row-background: $brand-light;
+$root: ".widget-datagrid";
 
 .table {
     position: relative;
     border-width: 0;
-    background-color: $background-color;
-
-    /* Table Content */
-    .table-content {
-        display: grid;
-        position: relative;
-
-        &.infinite-loading {
-            overflow-y: scroll;
-        }
-    }
+    background-color: var(--bg-color-secondary, $bg-color-secondary);
 
     /* Pseudo Row, to target this object please use .tr > .td or .tr > div */
     .tr {
@@ -38,19 +15,57 @@ $grid-selected-row-background: $brand-light;
     }
 
     /* Column Header */
+    @at-root {
+        :where(.widget-datagrid-grid .th) {
+            display: flex;
+            align-items: flex-start;
+            background-color: var(--bg-color-secondary, $bg-color-secondary);
+            border-width: 0;
+            border-color: var(--grid-border-color, $grid-border-color);
+            padding: var(--spacing-medium, $spacing-medium);
+            top: 0;
+            min-width: 0;
+            position: relative;
+        }
+    }
+
     .th {
-        display: flex;
-        align-items: flex-start;
-        font-weight: 600;
-        background-color: $background-color;
-        border-width: 0;
-        border-color: $grid-border-color;
-        padding: $spacing-medium;
-        position: -webkit-sticky; /* Safari */
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        min-width: 0;
+        &.dragging {
+            opacity: 0.5;
+            &.dragging-over-self {
+                opacity: 0.8;
+            }
+        }
+
+        &.drop-after:after,
+        &.drop-before:after {
+            content: "";
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: var(--spacing-smaller, $spacing-smaller);
+            background-color: $dragging-color-effect;
+
+            z-index: 1;
+        }
+
+        &.drop-before {
+            &:after {
+                left: 0;
+            }
+            &:not(:first-child):after {
+                transform: translateX(-50%);
+            }
+        }
+
+        &.drop-after {
+            &:after {
+                right: 0;
+            }
+            &:not(:last-child):after {
+                transform: translateX(50%);
+            }
+        }
 
         /* Clickable column header (Sortable) */
         .clickable {
@@ -62,12 +77,13 @@ $grid-selected-row-background: $brand-light;
             padding: 0 4px;
             align-self: stretch;
             cursor: col-resize;
+            margin-right: -12px;
 
             &:hover .column-resizer-bar {
-                background-color: $brand-primary;
+                background-color: var(--brand-primary, $brand-primary);
             }
             &:active .column-resizer-bar {
-                background-color: $brand-primary;
+                background-color: var(--brand-primary, $brand-primary);
             }
 
             .column-resizer-bar {
@@ -83,35 +99,35 @@ $grid-selected-row-background: $brand-light;
             flex-grow: 1;
             align-self: stretch;
             min-width: 0;
-            padding-left: $dragging-effect-size;
-            margin-left: -$dragging-effect-size;
-            /* Styles while dragging another column */
-            &.dragging {
-                border-left: $dragging-effect-size solid $dragging-color-effect;
-                padding-left: 0;
+
+            &:not(:has(.filter)) {
+                .column-header {
+                    height: 100%;
+                }
             }
         }
 
         /* Header text */
         .column-header {
-            height: 100%;
-            margin: 1px 1px 1px -$dragging-effect-size + 1px;
-
+            margin: 1px 1px calc((-1 * var(--spacing-smaller, $spacing-smaller)) + 2px);
             display: flex;
             align-items: baseline;
+            font-weight: 600;
 
             span {
                 min-width: 0;
                 flex-grow: 1;
                 text-overflow: ellipsis;
                 overflow: hidden;
+                text-wrap: nowrap;
+                align-self: center;
             }
 
             svg {
                 margin-left: 8px;
-                flex: 0 0 $icon-size;
-                color: $icon-color;
-                height: $icon-size;
+                flex: 0 0 var(--btn-font-size, $btn-font-size);
+                color: var(--gray-dark, $gray-dark);
+                height: var(--btn-font-size, $btn-font-size);
                 align-self: center;
             }
 
@@ -120,7 +136,7 @@ $grid-selected-row-background: $brand-light;
             }
 
             &:focus-visible {
-                outline: 1px solid $brand-primary;
+                outline: 1px solid var(--brand-primary, $brand-primary);
             }
         }
 
@@ -128,17 +144,28 @@ $grid-selected-row-background: $brand-light;
         .filter {
             display: flex;
             margin-top: 4px;
-            input:not([type="checkbox"]) {
-                font-weight: normal;
-                flex-grow: 1;
-                width: 100%;
-            }
             > .form-group {
                 margin-bottom: 0;
             }
-            > .form-control {
-                flex: unset;
-                min-width: unset;
+        }
+    }
+
+    /* If Column Header has filter */
+    &:has(.th .column-container .filter:not(:empty)) {
+        .th {
+            &.column-selector {
+                padding: var(--spacing-medium, $spacing-medium) 0;
+            }
+            /*adjust filter-selector icon to be mid-bottom aligned */
+            .column-selector-content {
+                align-self: flex-end;
+                margin-bottom: 3px;
+            }
+
+            /*adjust checkbox toggle to be mid-bottom aligned */
+            &.widget-datagrid-col-select {
+                align-items: flex-end;
+                padding-bottom: calc(var(--spacing-medium, $spacing-medium) + 11px);
             }
         }
     }
@@ -150,22 +177,20 @@ $grid-selected-row-background: $brand-light;
         /* Column content */
         .column-selector-content {
             align-self: center;
-
+            padding-right: var(--spacing-medium, $spacing-medium);
             /* Button containing the eye icon */
             .column-selector-button {
-                $icon-margin: 8px;
+                $icon-margin: 7px;
                 /* 2px as path of icon's path is a bit bigger than outer svg */
                 $icon-slack-size: 2px;
 
                 padding: 0;
                 margin: 0;
 
-                height: ($icon-size + $icon-margin * 2 + $icon-slack-size);
-                width: ($icon-size + $icon-margin * 2 + $icon-slack-size);
+                height: calc(var(--btn-font-size, $btn-font-size) + $icon-margin * 2 + $icon-slack-size);
+                width: calc(var(--btn-font-size, $btn-font-size) + $icon-margin * 2 + $icon-slack-size);
 
                 svg {
-                    width: $icon-size;
-                    height: $icon-size;
                     margin: $icon-margin;
                 }
             }
@@ -176,8 +201,11 @@ $grid-selected-row-background: $brand-light;
                 right: 0;
                 margin: 8px;
                 padding: 0 16px;
-                background: $background-color;
+                background: var(--bg-color-secondary, $bg-color-secondary);
                 z-index: 102;
+                overflow-y: auto;
+                width: fit-content;
+                max-width: 500px;
                 border-radius: 3px;
                 border: 1px solid transparent;
                 list-style-type: none;
@@ -193,6 +221,8 @@ $grid-selected-row-background: $brand-light;
                         margin: 8px;
                         font-weight: normal;
                         white-space: nowrap;
+                        overflow-x: hidden;
+                        text-overflow: ellipsis;
                     }
                 }
             }
@@ -204,10 +234,10 @@ $grid-selected-row-background: $brand-light;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: $spacing-medium;
+        padding: var(--spacing-medium, $spacing-medium);
         border-style: solid;
         border-width: 0;
-        border-color: $grid-border-color;
+        border-color: var(--grid-border-color, $grid-border-color);
         border-bottom-width: 1px;
         min-width: 0;
 
@@ -216,12 +246,18 @@ $grid-selected-row-background: $brand-light;
             border-top-style: solid;
         }
 
-        &:focus {
-            outline: none;
+        &:focus-visible {
+            outline-width: 1px;
+            outline-style: solid;
+            outline-offset: -1px;
+            outline-color: var(--brand-primary, $brand-primary);
         }
 
-        > .td-text,
-        * {
+        &.clickable {
+            cursor: pointer;
+        }
+
+        > .td-text {
             white-space: nowrap;
             word-break: break-word;
             text-overflow: ellipsis;
@@ -230,6 +266,7 @@ $grid-selected-row-background: $brand-light;
 
         > .td-custom-content {
             flex-grow: 1;
+            min-width: 0;
         }
 
         > .empty-placeholder {
@@ -264,6 +301,12 @@ $grid-selected-row-background: $brand-light;
     }
 }
 
+:where(.table .th .filter input:not([type="checkbox"])) {
+    font-weight: normal;
+    flex-grow: 1;
+    width: 100%;
+}
+
 .pagination-bar {
     display: flex;
     justify-content: flex-end;
@@ -273,17 +316,17 @@ $grid-selected-row-background: $brand-light;
     color: $pagination-caption-color;
 
     .paging-status {
-        padding: 0 8px 8px;
+        padding: 0 8px 0;
     }
 
     .pagination-button {
         padding: 6px;
-        color: $pagination-button-color;
+        color: var(--gray-darker, $gray-darker);
         border-color: transparent;
         background-color: transparent;
 
         &:hover {
-            color: $brand-primary;
+            color: var(--brand-primary, $brand-primary);
             border-color: transparent;
             background-color: transparent;
         }
@@ -298,7 +341,7 @@ $grid-selected-row-background: $brand-light;
         }
 
         &:focus-visible {
-            outline: 1px solid $brand-primary;
+            outline: 1px solid var(--brand-primary, $brand-primary);
         }
     }
     .pagination-icon {
@@ -317,19 +360,17 @@ $grid-selected-row-background: $brand-light;
     right: 0;
     margin: 8px 0;
     padding: 0 16px;
-    background: $background-color;
+    background: var(--bg-color-secondary, $bg-color-secondary);
     z-index: 102;
+    overflow-y: auto;
+    width: fit-content;
+    max-width: 500px;
     border-radius: 3px;
     border: 1px solid transparent;
     list-style-type: none;
     -webkit-box-shadow: 0 2px 20px 1px rgba(32, 43, 54, 0.08);
     -moz-box-shadow: 0 2px 20px 1px rgba(32, 43, 54, 0.08);
     box-shadow: 0 2px 20px 1px rgba(32, 43, 54, 0.08);
-
-    &.overflow {
-        height: 250px;
-        overflow-y: scroll;
-    }
 
     li {
         display: flex;
@@ -340,14 +381,309 @@ $grid-selected-row-background: $brand-light;
             margin: 8px;
             font-weight: normal;
             white-space: nowrap;
+            overflow-x: hidden;
+            text-overflow: ellipsis;
         }
     }
 }
 
-.widget-datagrid {
+#{$root} {
+    position: relative;
+
+    &-grid {
+        &.table {
+            display: grid !important;
+            min-width: fit-content;
+            margin-bottom: 0;
+            &.infinite-loading {
+                // in order to restrict the scroll to row area
+                // we need to prevent table itself to expanding beyond available position
+                min-width: 0;
+            }
+        }
+    }
+
+    &-top-bar {
+        container: widget-datagrid-header / inline-size;
+    }
+
+    &-content {
+        overflow-x: auto;
+    }
+
+    &-footer {
+        container: widget-datagrid-footer / inline-size;
+    }
+
     &.widget-datagrid-selection-method-click {
         .tr.tr-selected .td {
             background-color: $grid-selected-row-background;
+        }
+    }
+
+    .th.widget-datagrid-col-select,
+    .td.widget-datagrid-col-select {
+        align-items: center;
+    }
+
+    &-exporting,
+    &-selecting-all-pages {
+        .widget-datagrid-top-bar,
+        .widget-datagrid-header,
+        .widget-datagrid-content,
+        .widget-datagrid-footer {
+            visibility: hidden;
+
+            * {
+                transition: unset;
+            }
+        }
+    }
+
+    &-col-select input:focus-visible {
+        outline-offset: 0;
+    }
+
+    &-loader-container {
+        align-items: center;
+        background-color: rgba(255, 255, 255, 1);
+        display: flex;
+        height: 400px;
+        justify-content: center;
+        grid-column: 1/-1;
+    }
+
+    &-skeleton,
+    &-spinner {
+        align-content: center;
+        align-items: center;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow: hidden;
+    }
+
+    &-skeleton {
+        padding: 2px var(--dropdown-outer-padding, 0);
+        overflow: hidden;
+        flex: 1;
+
+        &-loader {
+            animation: skeleton-loading 1s linear infinite alternate;
+            background: var(--skeleton-background, $skeleton-background);
+            background-size: 300% 100%;
+            border-radius: 4px;
+            height: 16px;
+            width: 100%;
+            min-width: 32px;
+            max-width: 148px;
+
+            &-small {
+                margin-right: 8px;
+                width: 16px;
+            }
+        }
+    }
+
+    &-spinner {
+        justify-content: center;
+        width: 100%;
+
+        &-margin {
+            margin: 52px 0;
+        }
+
+        &-loader {
+            --widget-combobox-spinner-loader: conic-gradient(#0000 10%, #000), linear-gradient(#000 0 0) content-box;
+            animation: rotate 1s infinite linear;
+            aspect-ratio: 1;
+            background: var(--brand-primary, $brand-primary);
+            border-radius: 50%;
+            mask: var(--widget-combobox-spinner-loader);
+            mask-composite: subtract;
+
+            &-large {
+                height: 48px;
+                padding: 7px;
+                width: 48px;
+            }
+            &-medium {
+                height: 24px;
+                padding: 3.5px;
+                width: 24px;
+            }
+
+            &-small {
+                height: 16px;
+                padding: 2.3px;
+                width: 16px;
+            }
+        }
+    }
+}
+
+.widget-datagrid .widget-datagrid-load-more {
+    display: block !important;
+    margin: var(--spacing-small, 8px) 0;
+}
+
+.infinite-loading {
+    .widget-datagrid-grid-head {
+        // lock header width
+        // and prevent it from having own scrolling
+        // as scrolling is synchronized in JS
+        width: calc(var(--widgets-grid-width) - var(--widgets-grid-scrollbar-size));
+        overflow-x: hidden;
+    }
+    .widget-datagrid-grid-head[data-scrolled-y="true"] {
+        // add shadow under the header
+        // implying that grid is scrolled vertically (there are rows hidden under header)
+        // the data attribute added in JS
+        box-shadow: 0 5px 5px -5px gray;
+    }
+
+    .widget-datagrid-grid-body {
+        // lock the size of the body
+        // and enable it to have own scrolling
+        // body is the leading element
+        // header scroll will be synced to match it
+        width: var(--widgets-grid-width);
+        overflow-y: auto;
+        max-height: var(--widgets-grid-body-height);
+    }
+
+    .widget-datagrid-grid-head[data-scrolled-x="true"]:after {
+        // add inner shadow to the left side of the grid
+        // implying that the grid is scrolled horizontally (there are rows hidden on the left)
+        // the data attribute added in JS
+        content: "";
+        position: absolute;
+        left: 0;
+        width: 10px;
+        box-shadow: inset 5px 0 5px -5px gray;
+        top: 0;
+        bottom: 0;
+    }
+}
+
+.widget-datagrid-grid-head {
+    display: grid;
+    min-width: 0;
+
+    // this head is not part of the grid, so it has dedicated column template  --widgets-grid-template-columns-head
+    // but it might not be available at the initial render, so we use template from the grid --widgets-grid-template-columns
+    // using template from the grid might to misalignment from the grid itself,
+    // but in practice:
+    //   - grid has no data at that moment, so misalignment is not visible.
+    //   - as soon as the grid itself gets rendered --widgets-grid-template-columns-head gets calculated
+    //     and everything looks like it should.
+    grid-template-columns: var(--widgets-grid-template-columns-head, var(--widgets-grid-template-columns));
+}
+
+.widget-datagrid-grid-body {
+    // this element has to position their children (columns or headers)
+    // as grid and have those aligned with the parent grid
+    display: grid;
+    // this property makes sure we align our own grid columns
+    // to the columns defined in the global grid
+    grid-template-columns: var(--widgets-grid-template-columns);
+}
+
+.grid-mock-header {
+    display: contents;
+}
+
+:where(#{$root}-paging-bottom, #{$root}-padding-top) {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+}
+
+:where(#{$root}-pb-end, #{$root}-tb-end) {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+:where(#{$root}-pb-start, #{$root}-tb-start, #{$root}-pb-end, #{$root}-tb-end, #{$root}-pb-middle) {
+    flex-grow: 1;
+    flex-basis: 33.33%;
+}
+
+:where(#{$root}-pb-middle) {
+    display: flex;
+    justify-content: center;
+}
+
+:where(#{$root}-pb-start, #{$root}-tb-start) {
+    display: flex;
+    align-items: center;
+}
+
+#{$root}-btn-link {
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: var(--link-color);
+    padding: 0.3em 0.5em;
+    border-radius: 6px;
+    display: inline-block;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--brand-primary-50, #e6e7f2);
+    }
+}
+
+:where(#{$root}-selection-counter) {
+    display: flex;
+    align-items: center;
+    height: 54px;
+    padding: var(--spacing-small) var(--spacing-medium);
+}
+
+:where(#{$root}-select-all-bar) {
+    grid-column: 1 / -1;
+    background-color: #f0f1f2;
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    padding: var(--spacing-smaller, 8px) var(--spacing-medium, 16px);
+
+    #{$root}-spinner {
+        padding: 6.2px;
+    }
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: right;
+    }
+}
+
+@keyframes rotate {
+    to {
+        transform: rotate(1turn);
+    }
+}
+
+@container widget-datagrid-footer (width < 500px) {
+    #{$root}-paging-bottom {
+        flex-direction: column;
+        :where(#{$root}-pb-start, #{$root}-pb-end, #{$root}-pb-middle) {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+}
+
+@container widget-datagrid-header (width < 500px) {
+    #{$root}-padding-top {
+        flex-direction: column-reverse;
+        :where(#{$root}-tb-start, #{$root}-tb-end) {
+            width: 100%;
+            justify-content: center;
         }
     }
 }
