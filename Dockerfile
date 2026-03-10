@@ -1,11 +1,9 @@
-FROM mendix/mendix-runtime:latest
+FROM mendix/runtime:10
 
-WORKDIR /opt/app
+WORKDIR /opt/mendix
 
-COPY deployment /opt/app/deployment
-
-ENV ADMIN_PASSWORD=Admin123!
+COPY deployment/*.mda /opt/mendix/app.mda
 
 EXPOSE 8080
 
-CMD ["/opt/app/startup.sh"]
+CMD ["sh", "-c", "echo Starting Mendix app"]
