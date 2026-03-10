@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
 
     env:
-      # We use the major.minor version for the tool discovery
+      # We use the version to pull the correct Docker image
       MENDIX_VERSION: "10.24.1"
       MDA_OUTPUT: deployment/app.mda
 
@@ -29,30 +29,28 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: 3. Locate Mendix MxBuild
+      - name: 3. Extract MxBuild from Docker
         id: install_mx
         shell: pwsh
         run: |
-          # Since the CDN URL failed, we will look for mxbuild in the local environment
-          # or use a more reliable fallback URL. 
-          # For Mendix 10.24.1, we'll try the direct download link from the Marketplace/Support logic
+          $image = "mendix/mendix-buildpack:v10.24.1"
+          Write-Host "Pulling Mendix Build Image: $image"
           
-          $version = "10.24.1.41163"
-          $url = "https://cdn.mendix.com/runtime/mendix-$version.tar.gz"
+          # Pull the image and copy the build tools out to the runner
+          docker pull $image
+          docker create --name mx_container $image
+          mkdir mx_tools
+          docker cp mx_container:/opt/mendix/build mx_tools/
+          docker rm mx_container
           
-          Write-Host "Attempting download from Mendix CDN..."
-          try {
-              Invoke-WebRequest -Uri $url -OutFile "mendix_runtime.tar.gz" -ErrorAction Stop
-          } catch {
-              Write-Host "CDN Download failed. Falling back to Mendix Build Tools search..."
-              # If the CDN fails, we assume you might be running on a runner that needs 
-              # the tools pre-installed or we need to point to the build-server tools.
-              throw "Could not download Mendix $version. Please verify the build number '41163' in Studio Pro > Help > About."
+          # Find the executable
+          $mxbin = Get-ChildItem -Path "mx_tools" -Filter "mxbuild.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mxbin) { 
+            # Fallback for Linux-based containers: search for the 'mxbuild' shell script/binary
+            $mxbin = Get-ChildItem -Path "mx_tools" -Filter "mxbuild" -Recurse | Select-Object -First 1 -ExpandProperty FullName
           }
           
-          mkdir mx_tools
-          tar -xzf mendix_runtime.tar.gz -C mx_tools
-          $mxbin = Get-ChildItem -Path "mx_tools" -Filter "mxbuild.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "Found MxBuild at: $mxbin"
           "MXBUILD_BIN=$mxbin" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: 4. Locate Project File
@@ -70,10 +68,11 @@ jobs:
           $mpr = "${{ steps.find_mpr.outputs.mpr }}"
           $out = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
           
+          # Create folder if missing
           $dir = [System.IO.Path]::GetDirectoryName($out)
-          if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir }
+          if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }
 
-          # Execute Build
+          Write-Host "Starting build with Java 21..."
           & "$mx" --target=package --java-home="$env:JAVA_HOME" --output="$out" "$mpr"
 
       - name: 6. Commit and Push
@@ -81,10 +80,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
           if (Test-Path $env:MDA_OUTPUT) {
             git add $env:MDA_OUTPUT
-            git diff --cached --quiet || (git commit -m "CI: Auto-build MDA" && git push)
+            git diff --cached --quiet || (git commit -m "CI: Auto-build MDA version ${{ env:MENDIX_VERSION }}" && git push)
           } else {
-            Write-Error "MDA file was not created. Build failed."
+            Write-Error "Build failed: MDA file was not generated."
             exit 1
           }
