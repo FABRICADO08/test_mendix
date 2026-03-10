@@ -1,4 +1,4 @@
-name: Build MDA Automatically
+name: Build and Commit MDA
 
 on:
   push:
@@ -8,8 +8,13 @@ permissions:
   contents: write
 
 jobs:
-  build-mda:
-    runs-on: ubuntu-latest
+  mda:
+    runs-on: windows-latest
+
+    env:
+      # Specific version for your project
+      MENDIX_VERSION: "10.24.1.41163" 
+      MDA_OUTPUT: deployment/app.mda
 
     steps:
       - name: Checkout repo
@@ -17,26 +22,54 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build MDA using Mendix Docker Buildpack
-        run: |
-          docker pull mendix/docker-mendix-buildpack:latest
-          docker run --rm \
-            -v $PWD:/project \
-            mendix/docker-mendix-buildpack:latest \
-            /opt/mendix/buildpack/compilation /project /tmp/buildcache /tmp/deps 0
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
-          # Copy out the generated .mda (Mendix build output)
-          mkdir -p deployment
-          cp -r /project/build/mendix/app.mda deployment/app.mda || true
-
-      - name: Commit updated MDA
+      - name: Download Mendix Build Tools
+        id: install_mx
+        shell: pwsh
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add deployment/app.mda
-          if ! git diff --cached --quiet; then
-            git commit -m "Auto-update MDA"
-            git push
-          else
-            echo "No changes to commit."
-          fi
+          $url = "https://cdn.mendix.com/runtime/mxbuild-$($env:MENDIX_VERSION).tar.gz"
+          Write-Host "Downloading MxBuild from $url"
+          Invoke-WebRequest -Uri $url -OutFile "mxbuild.tar.gz"
+          
+          mkdir mxbuild_tools
+          # Use tar to extract the tools
+          tar -xzf mxbuild.tar.gz -C mxbuild_tools
+          
+          $mxbin = Resolve-Path "mxbuild_tools\modeler\mxbuild.exe"
+          echo "MXBUILD_BIN=$mxbin" >> $env:GITHUB_OUTPUT
+
+      - name: Locate Project File
+        id: find_mpr
+        shell: pwsh
+        run: |
+          $mpr = Get-ChildItem -Path . -Recurse -Filter *.mpr | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mpr) { throw "No .mpr file found." }
+          echo "mpr=$mpr" >> $env:GITHUB_OUTPUT
+
+      - name: Build MDA
+        shell: pwsh
+        run: |
+          $mx = "${{ steps.install_mx.outputs.MXBUILD_BIN }}"
+          $mpr = "${{ steps.find_mpr.outputs.mpr }}"
+          $java = $env:JAVA_HOME
+          $out = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
+          
+          # Create directory if missing
+          $dir = [System.IO.Path]::GetDirectoryName($out)
+          if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir }
+
+          # Run MxBuild explicitly pointing to the Java 21 Home
+          & "$mx" --target=package --java-home="$java" --output="$out" "$mpr"
+
+      - name: Commit & Push
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $env:MDA_OUTPUT
+          git diff --cached --quiet || (git commit -m "CI: auto-update MDA" && git push)
