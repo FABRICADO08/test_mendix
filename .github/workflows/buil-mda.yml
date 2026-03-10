@@ -3,6 +3,7 @@ name: Build and Commit MDA
 on:
   push:
     branches: [ "main", "develop" ]
+  workflow_dispatch: # This allows you to run it manually to test
 
 permissions:
   contents: write
@@ -12,89 +13,66 @@ jobs:
     runs-on: windows-latest
 
     env:
-      # Ensure this matches Help > About in Studio Pro
       MENDIX_VERSION: "10.24.1.41163" 
       MDA_OUTPUT: deployment/app.mda
 
     steps:
-      - name: Checkout repo
+      - name: 1. Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Java 21
+      - name: 2. Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Download and Prepare Mendix Build Tools
+      - name: 3. Download Mendix Runtime
         id: install_mx
         shell: pwsh
         run: |
-          # Use the 'mendix-' prefix which is the standard public CDN naming convention
           $url = "https://cdn.mendix.com/runtime/mendix-$($env:MENDIX_VERSION).tar.gz"
-          Write-Host "Downloading Mendix Runtime from $url"
+          Write-Host "Downloading from: $url"
           
-          try {
-              Invoke-WebRequest -Uri $url -OutFile "mendix_runtime.tar.gz"
-          } catch {
-              Write-Error "Download failed. The version number $($env:MENDIX_VERSION) might be slightly different on the CDN."
-              exit 1
-          }
+          # Use a simpler download method to avoid proxy/stream issues
+          $client = New-Object System.Net.WebClient
+          $client.DownloadFile($url, "mendix_runtime.tar.gz")
           
           mkdir mx_tools
-          # Extract the runtime tarball
           tar -xzf mendix_runtime.tar.gz -C mx_tools
           
-          # Find mxbuild.exe regardless of the internal folder structure
           $mxbin = Get-ChildItem -Path "mx_tools" -Filter "mxbuild.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          
-          if (-not $mxbin) { 
-            throw "mxbuild.exe not found in the downloaded package." 
-          }
+          if (-not $mxbin) { throw "mxbuild.exe not found!" }
           
           Write-Host "Found MxBuild at: $mxbin"
           "MXBUILD_BIN=$mxbin" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Locate Project File
+      - name: 4. Locate Project File
         id: find_mpr
         shell: pwsh
         run: |
           $mpr = Get-ChildItem -Path . -Recurse -Filter *.mpr | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $mpr) { throw "No .mpr file found in the repository." }
-          Write-Host "Found Project File: $mpr"
+          if (-not $mpr) { throw "No .mpr file found!" }
           "mpr=$mpr" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build MDA
+      - name: 5. Build MDA
         shell: pwsh
         run: |
           $mx = "${{ steps.install_mx.outputs.MXBUILD_BIN }}"
           $mpr = "${{ steps.find_mpr.outputs.mpr }}"
-          $java = $env:JAVA_HOME
           $out = Join-Path $env:GITHUB_WORKSPACE $env:MDA_OUTPUT
           
-          # Create deployment directory if it doesn't exist
+          # Create folder if missing
           $dir = [System.IO.Path]::GetDirectoryName($out)
           if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir }
 
-          Write-Host "Starting MxBuild..."
-          # Execute build with explicit Java 21 path
-          & "$mx" --target=package --java-home="$java" --output="$out" "$mpr"
+          & "$mx" --target=package --java-home="$env:JAVA_HOME" --output="$out" "$mpr"
 
-      - name: Commit and Push MDA
+      - name: 6. Commit and Push
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
           git add $env:MDA_OUTPUT
-          
-          # Only commit if the MDA file actually changed
-          $status = git status --porcelain
-          if ($status) {
-            git commit -m "CI: Automated MDA build for version ${{ env:MENDIX_VERSION }}"
-            git push
-          } else {
-            Write-Host "No changes detected in MDA. Skipping commit."
-          }
+          git diff --cached --quiet || (git commit -m "CI: Auto-build MDA" && git push)
