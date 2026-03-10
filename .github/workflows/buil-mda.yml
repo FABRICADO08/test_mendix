@@ -1,0 +1,32 @@
+name: Build MDA Automatically
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-mda:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build MDA using Mendix Buildpack
+        run: |
+          docker pull mendix/docker-mendix-buildpack:latest
+          docker run --rm \
+            -v ${{ github.workspace }}:/project \
+            mendix/docker-mendix-buildpack:latest \
+            /opt/mendix/build.sh /project
+
+      - name: Upload MDA artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-mda
+          path: build/mendix/app.mda
