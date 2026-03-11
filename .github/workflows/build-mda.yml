@@ -93,9 +93,9 @@ jobs:
             echo "✅ No changes to commit"
           else
             git commit -m "CI: Auto-build MDA (v${{ env.MENDIX_VERSION }})"
-            # ← THIS IS THE FIX (prevents the push rejection you saw)
+            # ← THIS FIXED VERSION (handles unstaged changes + works on main OR develop)
             git fetch origin
-            git pull origin ${{ github.ref_name }} --rebase
+            git pull origin ${{ github.ref_name }} --rebase --autostash
             git push
             echo "✅ MDA committed and pushed successfully!"
           fi
