@@ -41,6 +41,7 @@ WORKDIR /opt/mendix/app
 # Create a simple startup script since 'bin/mx' doesn't exist
 RUN echo '#!/bin/bash\nm2ee -c /opt/mendix/app/m2ee.yaml start' > /opt/mendix/app/start.sh && \
     chmod +x /opt/mendix/app/start.sh
+    
 
 # Mendix standard port
 EXPOSE 8080
