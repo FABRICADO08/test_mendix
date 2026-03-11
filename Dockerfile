@@ -33,7 +33,7 @@ COPY --from=builder /usr/lib/jvm /usr/lib/jvm
 COPY --from=builder /opt/mendix /opt/mendix
 
 # Set environment for Java
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /opt/mendix/app
