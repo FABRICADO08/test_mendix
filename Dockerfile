@@ -4,7 +4,7 @@ FROM python:3.11-slim-bookworm AS builder
 # Install Java (Required for Mendix Runtime) and Unzip
 RUN mkdir -p /usr/share/man/man1 && \
     apt-get update && apt-get install -y \
-    openjdk-17-jdk-headless \
+    openjdk-21-jdk-headless \
     unzip \
     curl \
     && rm -rf /var/lib/apt/lists/*
