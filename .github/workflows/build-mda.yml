@@ -86,13 +86,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
          
-          # Force-add because deployment/ is in .gitignore (standard Mendix behavior)
+          # Force-add because deployment/ is in .gitignore
           git add -f "${{ env.MDA_OUTPUT }}"
          
           if git diff --cached --quiet; then
             echo "✅ No changes to commit"
           else
             git commit -m "CI: Auto-build MDA (v${{ env.MENDIX_VERSION }})"
+            # ← THIS IS THE FIX (prevents the push rejection you saw)
+            git fetch origin
+            git pull origin ${{ github.ref_name }} --rebase
             git push
             echo "✅ MDA committed and pushed successfully!"
           fi
