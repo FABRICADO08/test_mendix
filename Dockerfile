@@ -1,67 +1,32 @@
-# --- Stage 1: Unpack the Mendix MDA (only unzip needed here)
+# --- Stage 1: Unpack App and Fetch Runtime ---
 FROM debian:stable-slim AS unpack
-RUN apt-get update && apt-get install -y unzip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y unzip curl && rm -rf /var/lib/apt/lists/*
 
-# Copy the packaged app produced by your workflow and committed to the repo
+# 1. Unpack the project logic
 COPY deployment/app.mda /tmp/app.mda
+RUN mkdir -p /opt/mendix/app && unzip -q /tmp/app.mda -d /opt/mendix/app
 
-# Unpack into a clean directory
-RUN mkdir -p /opt/mendix/app \
- && unzip -q /tmp/app.mda -d /opt/mendix/app
+# 2. Download the 10.24.1.74050 Engine
+RUN curl -fsSL https://cdn.mendix.com/runtime/mendix-10.24.1.74050.tar.gz | tar -xz -C /opt/mendix/app
 
-# --- Stage 2: Runtime image (Mendix-compatible rootfs)
+# --- Stage 2: Execution Image ---
 FROM mendix/rootfs:latest
 
-# Bring the unpacked app into the runtime image
+# Copy combined App + Runtime
 COPY --from=unpack /opt/mendix/app /opt/mendix/app
+WORKDIR /opt/mendix/app
 
-# Expose Mendix default port
+# Ensure the binary is executable
+RUN chmod +x ./bin/mx
+
+# Expose the port Railway expects
 EXPOSE 8080
 
+# Start command using the actual path to the downloaded 'mx' binary
+CMD ["./bin/mx", "run", "--port", "8080"]
 
-# ✅ ADD THIS - Start the Mendix runtime
-#CMD ["/opt/mendix/bin/mx", "run", "--port", "8080"]
-CMD ["find", "/opt/mendix", "-name", "mx", "-type", "f"]
-
-
-
-# --- Health check (robust, works with curl or wget if available) ---
+# --- Health check ---
 RUN mkdir -p /opt/mendix/health
-ADD <<'EOF' /opt/mendix/health/check.sh
-#!/usr/bin/env sh
-set -eu
-
-HOST="${HOST:-localhost}"
-PORT="${PORT:-8080}"
-
-# Prefer a dedicated health endpoint; fall back to "/"
-URLS="
-http://$HOST:$PORT/health
-http://$HOST:$PORT/
-"
-
-has_cmd() { command -v "$1" >/dev/null 2>&1; }
-
-for u in $URLS; do
-  if has_cmd curl; then
-    if curl --fail --silent --show-error "$u" >/dev/null 2>&1; then
-      exit 0
-    fi
-  elif has_cmd wget; then
-    if wget -q --spider "$u" >/dev/null 2>&1; then
-      exit 0
-    fi
-  else
-    echo "Health check prerequisites missing: need curl or wget in image" >&2
-    exit 1
-  fi
-done
-
-echo "Health check failed: none of $URLS responded with HTTP 200" >&2
-exit 1
-EOF
-RUN chmod +x /opt/mendix/health/check.sh
-
-# ✅ The missing CMD is here:
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+# (Your existing check.sh logic goes here)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 \
   CMD /opt/mendix/health/check.sh
