@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  packages: write  # Added to ensure you have permission to push to GHCR
 
 jobs:
   mda:
@@ -22,12 +21,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --- NEW STEP: Prepare lowercase repository name ---
-      - name: 0. Set Repository Name to Lowercase
-        id: repo_name
-        run: echo "LOWER_REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
-      # ----------------------------------------------------
-
       - name: 2. Set up Java 21
         uses: actions/setup-java@v4
         with:
@@ -39,19 +32,34 @@ jobs:
         shell: bash
         run: |
           url="https://cdn.mendix.com/runtime/mxbuild-${{ env.MENDIX_VERSION }}.tar.gz"
+          echo "Downloading MxBuild from: $url"
+
           curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "❌ Download failed!"; exit 1; }
+
           mkdir -p mx_tools
           tar -xzf mendix_runtime.tar.gz -C mx_tools
+
           mxbin=$(find mx_tools -name mxbuild -type f | head -n 1)
+          if [ -z "$mxbin" ]; then
+            echo "❌ mxbuild binary not found!"
+            exit 1
+          fi
+
           chmod +x "$mxbin"
           echo "MXBUILD_BIN=$mxbin" >> $GITHUB_OUTPUT
+          echo "✅ Found MxBuild at: $mxbin"
 
       - name: 4. Locate Project File
         id: find_mpr
         shell: bash
         run: |
           mpr=$(find . -name "*.mpr" -type f | head -n 1)
+          if [ -z "$mpr" ]; then
+            echo "❌ No .mpr file found!"
+            exit 1
+          fi
           echo "mpr=$mpr" >> $GITHUB_OUTPUT
+          echo "✅ Found project: $mpr"
 
       - name: 5. Build MDA
         shell: bash
@@ -59,15 +67,26 @@ jobs:
           mx="${{ steps.install_mx.outputs.MXBUILD_BIN }}"
           mpr="${{ steps.find_mpr.outputs.mpr }}"
           out="${{ github.workspace }}/${{ env.MDA_OUTPUT }}"
+
           mkdir -p "$(dirname "$out")"
-          "$mx" --target=package --java-home="$JAVA_HOME" --output="$out" "$mpr"
+
+          echo "🔧 Using JAVA_HOME : $JAVA_HOME"
+          echo "🔧 Java executable: $JAVA_HOME/bin/java"
+
+          "$mx" --target=package \
+              --java-home="$JAVA_HOME" \
+              --java-exe-path="$JAVA_HOME/bin/java" \
+              --output="$out" \
+              "$mpr"
 
       - name: 6. Commit and Push MDA
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add -f "${{ env.MDA_OUTPUT }}"
+
           if git diff --cached --quiet; then
             echo "✅ No changes to commit"
           else
@@ -75,6 +94,7 @@ jobs:
             git fetch origin
             git pull origin ${{ github.ref_name }} --rebase --autostash
             git push
+            echo "✅ MDA committed and pushed successfully!"
           fi
 
       - name: 7. Unzip MDA for Docker build
@@ -82,12 +102,20 @@ jobs:
         run: |
           mkdir -p deployment/unzipped
           unzip -q "${{ env.MDA_OUTPUT }}" -d deployment/unzipped
+          echo "✅ MDA unzipped to deployment/unzipped"
 
       - name: 8. Build Docker image
+        id: build_image
         shell: bash
         run: |
-          # Use the lowercase repo name from Step 0
-          docker build -t ghcr.io/${{ steps.repo_name.outputs.LOWER_REPO }}:${{ github.sha }} .
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/$owner/test_mendix:${{ github.sha }}"
+
+          docker build -t "$image" .
+          echo "image=$image" >> $GITHUB_OUTPUT
+
+          echo "Built image: $image"
+          echo "✅ Docker image built successfully!"
 
       - name: 9. Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -97,10 +125,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 10. Push Docker image
+        shell: bash
         run: |
-          # Use the lowercase repo name from Step 0
-          REPO_URL="ghcr.io/${{ steps.repo_name.outputs.LOWER_REPO }}"
-          docker push $REPO_URL:${{ github.sha }}
-          docker tag $REPO_URL:${{ github.sha }} $REPO_URL:latest
-          docker push $REPO_URL:latest
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          image_sha="ghcr.io/$owner/test_mendix:${{ github.sha }}"
+          image_latest="ghcr.io/$owner/test_mendix:latest"
+
+          docker push "$image_sha"
+          docker tag "$image_sha" "$image_latest"
+          docker push "$image_latest"
+
+          echo "Pushed:"
+          echo " - $image_sha"
+          echo " - $image_latest"
           echo "✅ Docker image pushed to GHCR!"
