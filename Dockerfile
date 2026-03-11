@@ -22,7 +22,7 @@ COPY deployment/app.mda /tmp/app.mda
 RUN unzip -q /tmp/app.mda -d /opt/mendix/app
 
 # 3. Install m2ee (This is what actually starts Mendix, replaces the missing 'mx')
-RUN pip install --no-cache-dir m2ee
+RUN pip install --no-cache-dir m2ee-tools
 
 # --- Stage 2: The Runtime Image ---
 FROM python:3.11-slim-bookworm
