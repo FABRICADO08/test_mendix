@@ -18,6 +18,12 @@ COPY --from=unpack /opt/mendix/app /opt/mendix/app
 # Expose Mendix default port
 EXPOSE 8080
 
+
+# ✅ ADD THIS - Start the Mendix runtime
+CMD ["/opt/mendix/bin/mx", "run", "--port", "8080"]
+
+
+
 # --- Health check (robust, works with curl or wget if available) ---
 RUN mkdir -p /opt/mendix/health
 ADD <<'EOF' /opt/mendix/health/check.sh
