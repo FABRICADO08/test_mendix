@@ -34,18 +34,18 @@ jobs:
         run: |
           url="https://cdn.mendix.com/runtime/mxbuild-${{ env.MENDIX_VERSION }}.tar.gz"
           echo "Downloading MxBuild from: $url"
-          
+         
           curl -L -f -o mendix_runtime.tar.gz "$url" || { echo "❌ Download failed!"; exit 1; }
-          
+         
           mkdir -p mx_tools
           tar -xzf mendix_runtime.tar.gz -C mx_tools
-          
+         
           mxbin=$(find mx_tools -name mxbuild -type f | head -n 1)
           if [ -z "$mxbin" ]; then
             echo "❌ mxbuild binary not found!"
             exit 1
           fi
-          
+         
           chmod +x "$mxbin"
           echo "MXBUILD_BIN=$mxbin" >> $GITHUB_OUTPUT
           echo "✅ Found MxBuild at: $mxbin"
@@ -68,12 +68,12 @@ jobs:
           mx="${{ steps.install_mx.outputs.MXBUILD_BIN }}"
           mpr="${{ steps.find_mpr.outputs.mpr }}"
           out="${{ github.workspace }}/${{ env.MDA_OUTPUT }}"
-          
+         
           mkdir -p "$(dirname "$out")"
-          
+         
           echo "🔧 Using JAVA_HOME : $JAVA_HOME"
           echo "🔧 Java executable: $JAVA_HOME/bin/java"
-          
+         
           "$mx" --target=package \
                 --java-home="$JAVA_HOME" \
                 --java-exe-path="$JAVA_HOME/bin/java" \
@@ -85,10 +85,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+         
           # Force-add because deployment/ is in .gitignore (standard Mendix behavior)
           git add -f "${{ env.MDA_OUTPUT }}"
-          
+         
           if git diff --cached --quiet; then
             echo "✅ No changes to commit"
           else
@@ -96,3 +96,31 @@ jobs:
             git push
             echo "✅ MDA committed and pushed successfully!"
           fi
+
+      - name: 7. Unzip MDA for Docker build
+        shell: bash
+        run: |
+          mkdir -p deployment/unzipped
+          unzip -q "${{ env.MDA_OUTPUT }}" -d deployment/unzipped
+          echo "✅ MDA unzipped to deployment/unzipped"
+
+      - name: 8. Build Docker image
+        shell: bash
+        run: |
+          docker build -t ghcr.io/FABRICADO08/test_mendix:${{ github.sha }} .
+          echo "✅ Docker image built successfully!"
+
+      - name: 9. Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 10. Push Docker image
+        run: |
+          docker push ghcr.io/FABRICADO08/test_mendix:${{ github.sha }}
+          # Also tag as latest for easy use
+          docker tag ghcr.io/FABRICADO08/test_mendix:${{ github.sha }} ghcr.io/FABRICADO08/test_mendix:latest
+          docker push ghcr.io/FABRICADO08/test_mendix:latest
+          echo "✅ Docker image pushed to GHCR!"
