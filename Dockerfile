@@ -21,7 +21,7 @@ EXPOSE 8080
 
 # ✅ ADD THIS - Start the Mendix runtime
 #CMD ["/opt/mendix/bin/mx", "run", "--port", "8080"]
-CMD ["/opt/mendix/runtime/bin/mx", "run"]
+CMD ["/opt/mendix/mxruntime/bin/mx", "run"]
 
 
 
